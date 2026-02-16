@@ -1,0 +1,33 @@
+name: LbMetr Bot
+
+# Запускать при каждом обновлении кода или вручную
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch: # Добавляет кнопку ручного запуска
+
+jobs:
+  run_bot:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install aiogram firebase-admin
+
+      - name: Run Bot
+        env:
+          # Эти названия должны В ТОЧНОСТИ совпадать с именами в Settings -> Secrets
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          FIREBASE_JSON: ${{ secrets.FIREBASE_JSON }}
+        run: python bot.py
