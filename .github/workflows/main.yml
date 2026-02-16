@@ -1,0 +1,32 @@
+name: LbMetr Bot
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch: # Чтобы ты мог запустить бота кнопкой
+
+jobs:
+  run_bot:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install aiogram firebase-admin
+
+      - name: Run Bot
+        env:
+          # Гитхаб возьмет твой токен из "Секретов"
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          FIREBASE_JSON: ${{ secrets.FIREBASE_JSON }}
+        run: python bot.py
