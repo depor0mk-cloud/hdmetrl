@@ -25,17 +25,16 @@ dp = Dispatcher()
 
 spam_check = {}
 
-# ID админа (лучше по user_id, но пока по username)
-ADMIN_USERNAME = "trim_peek"  # без @
-
 # Константы
-CD_NORMAL = 15 * 60          # 15 минут
-CD_PROFI = 10 * 60           # 10 минут
+ADMIN_USERNAME = "trim_peek"           # админ (без @)
+CD_NORMAL = 15 * 60                    # 15 минут
+CD_PROFI = 10 * 60                     # 10 минут
 PROFI_THRESHOLD = 1000.0
-CANCER_CHANCE = 0.005        # 0.5%
+CANCER_CHANCE = 0.005                   # 0.5%
 
 @dp.message(Command("toplobok"))
 async def cmd_top(message: Message):
+    """Глобальный топ-30."""
     ref = db.reference('users')
     users = ref.get()
     if not users:
@@ -49,7 +48,7 @@ async def cmd_top(message: Message):
             if size > 0:
                 name = data.get('display_name', 'Инкогнито')
                 if name.startswith('@'):
-                    name = name[1:]
+                    name = name[1:]          # убираем @, если вдруг затесался
                 top_list.append({'name': name, 'size': size})
     
     top_list.sort(key=lambda x: x['size'], reverse=True)
@@ -77,6 +76,7 @@ async def cmd_top(message: Message):
 
 @dp.message(Command("lobok"))
 async def cmd_grow(message: Message):
+    """Увеличить лобок."""
     if message.chat.type == 'private':
         await message.answer("❌ Добавь меня в группу, чтобы растить лобок!")
         return
@@ -96,12 +96,18 @@ async def cmd_grow(message: Message):
     ref = db.reference(f'users/{user_id}')
     user_data = ref.get() or {}
     
+    # Всегда обновляем display_name (на случай, если пользователь сменил имя в TG)
+    ref.update({'display_name': display_name})
+    
     # Проверка на рак
     cancer_until = user_data.get('cancer_until', 0)
     if current_time < cancer_until:
         rem = cancer_until - current_time
         h, m, s = rem // 3600, (rem % 3600) // 60, rem % 60
-        await message.reply(f"🚨 {mention}, у тебя рак лобка! До конца лечения: {h}ч {m}м {s}с", parse_mode="Markdown")
+        await message.reply(
+            f"🚨 {mention}, у тебя рак лобка! До конца лечения: {h}ч {m}м {s}с",
+            parse_mode="Markdown"
+        )
         return
     
     # Определяем КД в зависимости от размера
@@ -113,7 +119,10 @@ async def cmd_grow(message: Message):
         rem = (last_grow + cd_seconds) - current_time
         minutes = rem // 60
         seconds = rem % 60
-        await message.reply(f"⏳ {mention}, лобок ещё не восстановился! Подожди ещё {minutes}м {seconds}с.", parse_mode="Markdown")
+        await message.reply(
+            f"⏳ {mention}, лобок ещё не восстановился! Подожди ещё {minutes}м {seconds}с.",
+            parse_mode="Markdown"
+        )
         return
     
     # Шанс на рак
@@ -121,10 +130,12 @@ async def cmd_grow(message: Message):
         five_h = 5 * 60 * 60
         ref.update({
             'cancer_until': current_time + five_h,
-            'display_name': display_name
-            # last_grow не трогаем, чтобы после лечения не было лишнего КД
+            # last_grow не трогаем — чтобы после лечения не было лишнего КД
         })
-        await message.reply(f"☣️ {mention}, ПЛОХИЕ НОВОСТИ! У тебя развился рак лобка. Рост заблокирован на 5 часов.", parse_mode="Markdown")
+        await message.reply(
+            f"☣️ {mention}, ПЛОХИЕ НОВОСТИ! У тебя развился рак лобка. Рост заблокирован на 5 часов.",
+            parse_mode="Markdown"
+        )
         return
     
     # Определяем диапазон роста в зависимости от статуса профи
@@ -138,7 +149,6 @@ async def cmd_grow(message: Message):
     ref.update({
         'size': new_size,
         'last_grow': current_time,
-        'display_name': display_name
     })
     
     # Если перешагнули порог профи, добавим поздравление
@@ -175,16 +185,13 @@ async def cmd_edit_lobok(message: Message):
     
     user_id = str(message.from_user.id)
     ref = db.reference(f'users/{user_id}')
-    user_data = ref.get() or {}
-    
-    # Сохраняем имя лобка
-    ref.update({'lobok_name': lobok_name})
+    ref.update({'lobok_name': lobok_name, 'display_name': message.from_user.first_name})
     
     await message.reply(f"✅ Имя твоего лобка сохранено: «{lobok_name}»")
 
 @dp.message(Command("lobokinfo"))
 async def cmd_lobok_info(message: Message):
-    """Показать информацию о себе и лобке."""
+    """Показать информацию о себе и лобке, включая статус рака."""
     if message.chat.type == 'private':
         await message.answer("❌ Эта команда работает только в группах!")
         return
@@ -204,12 +211,23 @@ async def cmd_lobok_info(message: Message):
     # Статус профи
     profi_status = "✅ Профи (1000+ см)" if size >= PROFI_THRESHOLD else "❌ Обычный игрок"
     
+    # Статус рака
+    cancer_until = user_data.get('cancer_until', 0)
+    current_time = int(time.time())
+    if current_time < cancer_until:
+        rem = cancer_until - current_time
+        h, m, s = rem // 3600, (rem % 3600) // 60, rem % 60
+        cancer_status = f"☣️ **Активен** (осталось {h}ч {m}м {s}с)"
+    else:
+        cancer_status = "✅ Здоров"
+    
     text = (
         f"📋 **Информация о тебе**\n\n"
         f"👤 **Имя:** {display_name}\n"
         f"📏 **Размер лобка:** {size:.2f} см\n"
         f"🏷️ **Имя лобка:** {lobok_name}\n"
-        f"⭐ **Статус:** {profi_status}"
+        f"⭐ **Статус:** {profi_status}\n"
+        f"🩺 **Рак:** {cancer_status}"
     )
     
     await message.answer(text, parse_mode="Markdown")
@@ -221,7 +239,7 @@ async def cmd_remove_cancer(message: Message):
         await message.answer("❌ Эта команда работает только в группах!")
         return
     
-    # Проверка прав (по username)
+    # Проверка прав (по username, без учёта регистра)
     if not message.from_user.username or message.from_user.username.lower() != ADMIN_USERNAME.lower():
         await message.answer("🚫 У тебя нет прав на использование этой команды.")
         return
@@ -231,19 +249,23 @@ async def cmd_remove_cancer(message: Message):
         await message.answer("❌ Укажи пользователя. Пример:\n/rak @username")
         return
     
-    target_username = args[1].lstrip('@')  # убираем @ если есть
+    target_username = args[1].lstrip('@')
     
     # Ищем пользователя в чате по username
+    target_id = None
+    target_name = None
     try:
         async for member in bot.get_chat_members(message.chat.id):
             user = member.user
             if user.username and user.username.lower() == target_username.lower():
                 target_id = str(user.id)
+                target_name = user.first_name
                 break
-        else:
+        if not target_id:
             await message.answer(f"❌ Пользователь @{target_username} не найден в этом чате.")
             return
     except Exception as e:
+        print(f"Ошибка при поиске пользователя: {e}")
         await message.answer("❌ Не удалось получить список участников. Попробуй позже.")
         return
     
@@ -262,22 +284,26 @@ async def cmd_remove_cancer(message: Message):
     
     # Убираем рак (ставим cancer_until = 0)
     ref.update({'cancer_until': 0})
-    await message.answer(f"☑️ Админ @{message.from_user.username} снял рак с @{target_username}. Теперь он снова может расти!")
+    print(f"Админ @{message.from_user.username} снял рак с @{target_username} (ID: {target_id})")
+    await message.answer(
+        f"☑️ Админ @{message.from_user.username} снял рак с @{target_username}.\n"
+        f"Теперь {target_name} снова может расти!"
+    )
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
         "📏 **Лобкометр (обновлённая версия)**\n\n"
         "🔹 Добавь меня в группу\n"
-        "🔹 Пиши /lobok каждые 15 мин (при 1000+ см — 10 мин)\n"
+        "🔹 Пиши /lobok — каждые 15 мин (при 1000+ см — 10 мин)\n"
         "🔹 /editlobok <имя> — дай имя своему лобку\n"
-        "🔹 /lobokinfo — информация о тебе\n"
+        "🔹 /lobokinfo — информация о тебе (с таймером рака)\n"
         "🔹 /toplobok — глобальный рейтинг\n\n"
         "Удачи с ростом! 🍈"
     )
 
 async def main():
-    print("Бот запущен...")
+    print("✅ Бобёр запущен и готов к работе...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
