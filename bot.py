@@ -8,6 +8,8 @@ from firebase_admin import credentials, db
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import Message
+from flask import Flask
+import threading
 
 # 1. FIREBASE SETUP
 try:
@@ -27,10 +29,9 @@ spam_check = {}
 
 # Константы
 ADMIN_USERNAME = "trim_peek"           # админ (без @)
-CD_NORMAL = 15 * 60                    # 15 минут для всех
-CD_REDUCED = 10 * 60                   # 10 минут для тех, у кого >= 100 см
-CD_THRESHOLD = 100.0                    # порог для сокращённого КД
-PROFI_THRESHOLD = 1000.0                # порог для профи (увеличенный рост)
+CD_NORMAL = 15 * 60                    # 15 минут
+CD_PROFI = 10 * 60                     # 10 минут
+PROFI_THRESHOLD = 1000.0
 CANCER_CHANCE = 0.005                   # 0.5%
 CANCER_DURATION = 5 * 60 * 60           # 5 часов в секундах
 
@@ -147,11 +148,9 @@ async def cmd_grow(message: Message):
         )
         return
     
-    # Определяем текущий размер
+    # Определяем КД в зависимости от размера
     current_size = user_data.get('size', 0)
-    
-    # Определяем КД в зависимости от размера (порог 100 см)
-    cd_seconds = CD_REDUCED if current_size >= CD_THRESHOLD else CD_NORMAL
+    cd_seconds = CD_PROFI if current_size >= PROFI_THRESHOLD else CD_NORMAL
     
     last_grow = user_data.get('last_grow', 0)
     if current_time < last_grow + cd_seconds:
@@ -177,7 +176,7 @@ async def cmd_grow(message: Message):
         )
         return
     
-    # Определяем диапазон роста в зависимости от статуса профи (1000+ см)
+    # Определяем диапазон роста
     if current_size >= PROFI_THRESHOLD:
         growth = round(random.uniform(10.0, 20.0), 2)
     else:
@@ -257,7 +256,7 @@ async def cmd_lobok_info(message: Message):
     lobok_name = user_data.get('lobok_name', 'Безымянный')
     display_name = user_data.get('display_name', message.from_user.first_name)
     
-    # Статус профи (1000+ см)
+    # Статус профи
     profi_status = "✅ Профи (1000+ см)" if size >= PROFI_THRESHOLD else "❌ Обычный игрок"
     
     # Статус рака через новую функцию
@@ -397,16 +396,41 @@ async def cmd_start(message: Message):
     await message.answer(
         "📏 **Лобкометр (обновлённая версия)**\n\n"
         "🔹 Добавь меня в группу\n"
-        "🔹 Пиши /lobok — каждые 15 мин (при 100+ см — 10 мин)\n"
+        "🔹 Пиши /lobok — каждые 15 мин (при 1000+ см — 10 мин)\n"
         "🔹 /editlobok <имя> — дай имя своему лобку\n"
         "🔹 /lobokinfo — информация о тебе\n"
         "🔹 /toplobok — глобальный рейтинг\n\n"
+        "**Для админа:**\n"
+        "🔹 /rak @username — проверить статус\n"
+        "🔹 /rak @username Yes — выдать рак\n"
+        "🔹 /rak @username No — вылечить\n\n"
         "Удачи с ростом! 🍈"
     )
 
+# ========== ЭТО НОВЫЙ КОД ДЛЯ RENDER ==========
+# Flask сервер для Render
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Лобкометр работает!"
+
+@app.route('/health')
+def health():
+    return "OK", 200
+
+def run_flask():
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
+
 async def main():
-    print("✅ Бобёр с новыми правилами запущен...")
+    # Запускаем Flask в фоне
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    
+    print("✅ Бот запущен на Render...")
     await dp.start_polling(bot)
+# ========== КОНЕЦ НОВОГО КОДА ==========
 
 if __name__ == "__main__":
     asyncio.run(main())
