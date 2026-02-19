@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>$LBM Miner</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: #000000;
+            color: #FFFFFF;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 16px;
+        }
+
+        .glass-container {
+            max-width: 400px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* Liquid Glass эффект */
+        .glass-card {
+            background: rgba(30, 30, 30, 0.5);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .glass-card:active {
+            transform: scale(0.99);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
+        }
+
+        .balance-card {
+            background: linear-gradient(135deg, rgba(0, 255, 170, 0.15), rgba(0, 150, 255, 0.1));
+            border: 1px solid rgba(0, 255, 170, 0.3);
+        }
+
+        /* Текст */
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 4px;
+            color: #00FFAA;
+        }
+
+        h2 {
+            font-size: 18px;
+            font-weight: 500;
+            margin-bottom: 12px;
+            color: #FFFFFF;
+            opacity: 0.9;
+        }
+
+        .value {
+            font-size: 32px;
+            font-weight: 700;
+            font-family: 'SF Mono', monospace;
+            color: #FFFFFF;
+        }
+
+        .label {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 4px;
+        }
+
+        /* Прогресс-бар */
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 12px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #00FFAA;
+            width: 70%;
+            border-radius: 4px;
+            box-shadow: 0 0 10px #00FFAA;
+        }
+
+        /* Кнопки */
+        .button-row {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .button {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 40px;
+            padding: 16px;
+            color: #FFFFFF;
+            font-size: 16px;
+            font-weight: 600;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .button-primary {
+            background: #00FFAA;
+            color: #000000;
+            border: none;
+            font-weight: 700;
+        }
+
+        .button-primary:active {
+            background: #00DD88;
+            transform: scale(0.97);
+        }
+
+        .button-secondary {
+            background: transparent;
+            border: 1px solid #00FFAA;
+            color: #00FFAA;
+        }
+
+        /* Счетчик */
+        .counter {
+            font-family: 'SF Mono', monospace;
+            font-size: 48px;
+            font-weight: 700;
+            color: #00FFAA;
+            text-align: center;
+            margin: 20px 0;
+            text-shadow: 0 0 20px rgba(0, 255, 170, 0.5);
+        }
+
+        /* Сетка статистики */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-top: 16px;
+        }
+
+        .stat-item {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #00FFAA;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        /* Топ игроков */
+        .top-list {
+            margin-top: 16px;
+        }
+
+        .top-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .top-rank {
+            color: #00FFAA;
+            font-weight: 600;
+            margin-right: 12px;
+        }
+
+        .top-name {
+            flex: 1;
+        }
+
+        .top-balance {
+            font-family: 'SF Mono', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="glass-container">
+        <!-- Заголовок -->
+        <div class="glass-card">
+            <h1>⛏️ $LBM MINER</h1>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="label">до листинга</span>
+                <span class="value" style="font-size: 24px;" id="daysCounter">467 дней</span>
+            </div>
+        </div>
+
+        <!-- Баланс -->
+        <div class="glass-card balance-card">
+            <div class="label">твой баланс</div>
+            <div class="value" id="balance">1,547 $LBM</div>
+            <div style="margin-top: 8px; display: flex; justify-content: space-between;">
+                <span class="label">≈ $0.15 pre-market</span>
+                <span class="label" id="energy">⚡ 720/1000</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: 72%" id="energyBar"></div>
+            </div>
+        </div>
+
+        <!-- Кнопка майнинга -->
+        <div class="glass-card" style="text-align: center;">
+            <div class="counter" id="miningCounter">0</div>
+            <div class="button-row">
+                <div class="button button-primary" id="mineBtn">⛏️ МАЙНИТЬ</div>
+                <div class="button button-secondary" id="boostBtn">🚀 x2</div>
+            </div>
+            <div class="label" style="margin-top: 12px;" id="rewardInfo">награда за блок: 15-45 $LBM</div>
+        </div>
+
+        <!-- Статистика -->
+        <div class="glass-card">
+            <h2>📊 статистика</h2>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-value" id="totalMined">1,547</div>
+                    <div class="stat-label">всего добыто</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="blocksFound">128</div>
+                    <div class="stat-label">блоков найдено</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="hashrate">15.4</div>
+                    <div class="stat-label">MH/s</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="rank">#42</div>
+                    <div class="stat-label">рейтинг</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Топ игроков -->
+        <div class="glass-card">
+            <h2>🏆 топ майнеров</h2>
+            <div class="top-list" id="topList">
+                <div class="top-item">
+                    <span class="top-rank">🥇 1</span>
+                    <span class="top-name">@crypto_king</span>
+                    <span class="top-balance">1.2M</span>
+                </div>
+                <div class="top-item">
+                    <span class="top-rank">🥈 2</span>
+                    <span class="top-name">@miner_pro</span>
+                    <span class="top-balance">980K</span>
+                </div>
+                <div class="top-item">
+                    <span class="top-rank">🥉 3</span>
+                    <span class="top-name">@hash_god</span>
+                    <span class="top-balance">754K</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Эмуляция данных (в реальном Mini App будет загрузка из Telegram WebApp)
+        let balance = 1547;
+        let energy = 720;
+        const maxEnergy = 1000;
+        let totalMined = 1547;
+        let blocksFound = 128;
+
+        // Обновление интерфейса
+        function updateUI() {
+            document.getElementById('balance').textContent = balance.toLocaleString() + ' $LBM';
+            document.getElementById('energy').textContent = `⚡ ${energy}/${maxEnergy}`;
+            document.getElementById('energyBar').style.width = (energy / maxEnergy * 100) + '%';
+            document.getElementById('totalMined').textContent = totalMined.toLocaleString();
+            document.getElementById('blocksFound').textContent = blocksFound;
+        }
+
+        // Майнинг
+        document.getElementById('mineBtn').addEventListener('click', function() {
+            if (energy < 10) {
+                alert('❌ Недостаточно энергии! Подожди восстановления.');
+                return;
+            }
+
+            // Тратим энергию
+            energy -= 10;
+            
+            // Случайная награда (зависит от времени до листинга)
+            const daysLeft = 467; // В реальности будет расчёт
+            const multiplier = daysLeft > 400 ? 1 : daysLeft > 300 ? 1.5 : daysLeft > 200 ? 2 : daysLeft > 100 ? 3 : daysLeft > 30 ? 5 : 10;
+            const reward = Math.floor((Math.random() * 10 + 5) * multiplier);
+            
+            balance += reward;
+            totalMined += reward;
+            blocksFound += 1;
+
+            // Анимация счетчика
+            const counter = document.getElementById('miningCounter');
+            counter.textContent = '+' + reward;
+            counter.style.opacity = '1';
+            setTimeout(() => {
+                counter.style.opacity = '0';
+            }, 1000);
+
+            updateUI();
+        });
+
+        // Бустер
+        document.getElementById('boostBtn').addEventListener('click', function() {
+            if (balance < 50) {
+                alert('❌ Нужно 50 $LBM для бустера!');
+                return;
+            }
+            balance -= 50;
+            alert('🚀 Бустер x2 активирован на 1 час!');
+            updateUI();
+        });
+
+        // Восстановление энергии (1 ед/сек)
+        setInterval(() => {
+            if (energy < maxEnergy) {
+                energy = Math.min(maxEnergy, energy + 1);
+                updateUI();
+            }
+        }, 1000);
+
+        // Таймер до листинга
+        function updateDays() {
+            // Эмуляция: 467 дней до 1 июня 2026
+            const daysElement = document.getElementById('daysCounter');
+            daysElement.textContent = '467 дней';
+        }
+        updateDays();
+        setInterval(updateDays, 60000);
+
+        // Инициализация
+        updateUI();
+    </script>
+</body>
+  </html>
