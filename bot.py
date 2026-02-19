@@ -13,6 +13,8 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from keep_alive import keep_alive
 
+# Даём Flask время запуститься, чтобы Render увидел порт
+time.sleep(5)
 keep_alive()
 
 # ---------- Firebase ----------
@@ -44,10 +46,11 @@ INFINITY_VALUE = 999999999.99
 class AdminStates(StatesGroup):
     waiting_for_user = State()
     waiting_for_number = State()
+    waiting_for_text = State()      # ← добавили для рассылки
     action_data = State()
 
 # ---------- Вспомогательные функции ----------
-def has_cancer(user_data: dict, now: int = None) -> bool:
+def has_cancer(user_data: dict, now: int = None):
     if not now: now = int(time.time())
     if user_data.get('cancer') == "Yes" and user_data.get('cancer_until', 0) > now:
         return True, user_data['cancer_until'] - now
@@ -591,7 +594,7 @@ async def admin_post_input(message: types.Message, state: FSMContext):
 
 # ========== ЗАПУСК ==========
 async def main():
-    print("✅ Бобёр с админкой запущен...")
+    print("✅ Бобёр с наградами и рассылкой запущен...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
