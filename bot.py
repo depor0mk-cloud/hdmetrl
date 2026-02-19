@@ -4,6 +4,7 @@ import asyncio
 import random
 import time
 from datetime import datetime, timedelta
+from aiohttp import web
 import firebase_admin
 from firebase_admin import credentials, db
 from aiogram import Bot, Dispatcher, types, F
@@ -11,11 +12,15 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from keep_alive import keep_alive
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
-# Запуск Flask
-time.sleep(3)
-keep_alive()
+# ---------- Конфигурация ----------
+TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_PATH = "/webhook"
+BASE_URL = os.getenv("RENDER_EXTERNAL_URL")  # Render сам даёт эту переменную
+if not BASE_URL:
+    BASE_URL = "https://lobkomtr.onrender.com"  # твой URL
+WEBHOOK_URL = BASE_URL + WEBHOOK_PATH
 
 # ---------- Firebase ----------
 try:
@@ -28,13 +33,15 @@ try:
 except Exception as e:
     print(f"Firebase error: {e}")
 
-bot = Bot(token=os.getenv("BOT_TOKEN"))
+# ---------- Инициализация бота ----------
+bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
+spam_check = {}
 
 # ---------- Константы ----------
 ADMIN_USERNAME = "trim_peek"
-LISTING_DATE = datetime(2026, 6, 1)  # 1 июня 2026
-START_BALANCE = 100  # Стартовые токены
+LISTING_DATE = datetime(2026, 6, 1)
+START_BALANCE = 100
 
 # ---------- FSM ----------
 class MinerStates(StatesGroup):
@@ -42,19 +49,17 @@ class MinerStates(StatesGroup):
 
 # ---------- Вспомогательные функции ----------
 def get_days_until_listing():
-    now = datetime.now()
-    delta = LISTING_DATE - now
+    delta = LISTING_DATE - datetime.now()
     return max(0, delta.days)
 
 def get_mining_difficulty():
-    """Чем ближе к листингу, тем выше базовая награда (инфляция)"""
     days_left = get_days_until_listing()
-    if days_left > 400: return 1.0      # сейчас: низкая награда
+    if days_left > 400: return 1.0
     if days_left > 300: return 1.5
     if days_left > 200: return 2.0
     if days_left > 100: return 3.0
     if days_left > 30: return 5.0
-    return 10.0  # последний месяц: х10 награда
+    return 10.0
 
 async def get_user(user_id: str):
     ref = db.reference(f'users/{user_id}')
@@ -69,7 +74,6 @@ async def get_user(user_id: str):
     return data, ref
 
 async def update_energy(user_id: str, data: dict, ref):
-    """Восстанавливаем энергию (1 ед/сек)"""
     now = int(time.time())
     last = data.get('last_energy_update', now)
     elapsed = now - last
@@ -79,7 +83,7 @@ async def update_energy(user_id: str, data: dict, ref):
     ref.update({'energy': new_energy, 'last_energy_update': now})
     return new_energy
 
-# ---------- Команды ----------
+# ========== КОМАНДЫ ==========
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     user_id = str(message.from_user.id)
@@ -101,13 +105,52 @@ async def cmd_start(message: types.Message):
     )
     await message.answer(text, parse_mode="Markdown")
 
+@dp.message(Command("mine"))
+async def cmd_mine(message: types.Message):
+    user_id = str(message.from_user.id)
+    data, ref = await get_user(user_id)
+    
+    energy = await update_energy(user_id, data, ref)
+    
+    if energy < 10:
+        await message.answer("❌ Недостаточно энергии! Подожди восстановления.")
+        return
+    
+    cost = 10
+    new_energy = energy - cost
+    ref.update({'energy': new_energy})
+    
+    base_reward = random.randint(5, 15)
+    diff_mult = get_mining_difficulty()
+    booster = data.get('booster', 1.0)
+    if data.get('booster_until', 0) < int(time.time()):
+        booster = 1.0
+    
+    reward = int(base_reward * diff_mult * booster)
+    
+    new_balance = data['balance'] + reward
+    new_total = data['total_mined'] + reward
+    ref.update({
+        'balance': new_balance,
+        'total_mined': new_total,
+        'display_name': message.from_user.first_name
+    })
+    
+    if message.from_user.username:
+        ref.update({'username': message.from_user.username.lower()})
+    
+    text = (
+        f"⛏️ **Майнинг завершён!**\n\n"
+        f"💰 Добыто: **+{reward} $LBM**\n"
+        f"📊 Баланс: **{new_balance} $LBM**\n"
+        f"⚡ Энергия: **{new_energy}/1000**"
+    )
+    await message.answer(text, parse_mode="Markdown")
+
 @dp.message(Command("stats"))
 async def cmd_stats(message: types.Message):
     user_id = str(message.from_user.id)
     data, _ = await get_user(user_id)
-    
-    days = get_days_until_listing()
-    diff = get_mining_difficulty()
     
     text = (
         f"📊 **ТВОЯ СТАТИСТИКА**\n\n"
@@ -115,8 +158,7 @@ async def cmd_stats(message: types.Message):
         f"⛏️ Всего добыто: **{data['total_mined']} $LBM**\n"
         f"⚡ Энергия: **{data['energy']}/1000**\n"
         f"🚀 Бустер: **x{data.get('booster', 1.0)}**\n"
-        f"📅 До листинга: **{days} дней**\n"
-        f"📈 Множитель награды: **x{diff:.1f}**"
+        f"📅 До листинга: **{get_days_until_listing()} дней**"
     )
     await message.answer(text, parse_mode="Markdown")
 
@@ -136,57 +178,6 @@ async def cmd_top(message: types.Message):
     
     await message.answer(text, parse_mode="Markdown")
 
-@dp.message(Command("mine"))
-async def cmd_mine(message: types.Message):
-    user_id = str(message.from_user.id)
-    data, ref = await get_user(user_id)
-    
-    # Обновляем энергию
-    energy = await update_energy(user_id, data, ref)
-    
-    if energy < 10:
-        await message.answer("❌ Недостаточно энергии! Подожди, она восстановится.")
-        return
-    
-    # Тратим энергию
-    cost = 10
-    new_energy = energy - cost
-    ref.update({'energy': new_energy})
-    
-    # Расчёт награды
-    base_reward = random.randint(5, 15)
-    diff_mult = get_mining_difficulty()
-    booster = data.get('booster', 1.0)
-    if data.get('booster_until', 0) < int(time.time()):
-        booster = 1.0
-    
-    reward = int(base_reward * diff_mult * booster)
-    
-    # Обновляем баланс
-    new_balance = data['balance'] + reward
-    new_total = data['total_mined'] + reward
-    ref.update({
-        'balance': new_balance,
-        'total_mined': new_total,
-        'display_name': message.from_user.first_name
-    })
-    
-    # Сохраняем username если есть
-    if message.from_user.username:
-        ref.update({'username': message.from_user.username.lower()})
-    
-    days = get_days_until_listing()
-    
-    text = (
-        f"⛏️ **Майнинг завершён!**\n\n"
-        f"💰 Добыто: **+{reward} $LBM**\n"
-        f"📊 Баланс: **{new_balance} $LBM**\n"
-        f"⚡ Энергия: **{new_energy}/1000**\n"
-        f"📅 До листинга: **{days} дней**\n\n"
-        f"💡 Чем ближе к дате, тем выше награда!"
-    )
-    await message.answer(text, parse_mode="Markdown")
-
 @dp.message(Command("boost"))
 async def cmd_boost(message: types.Message):
     user_id = str(message.from_user.id)
@@ -196,7 +187,6 @@ async def cmd_boost(message: types.Message):
         await message.answer("❌ Недостаточно $LBM! Нужно 50.")
         return
     
-    # Покупаем бустер x2 на 1 час
     new_balance = data['balance'] - 50
     booster_until = int(time.time()) + 3600
     
@@ -206,11 +196,7 @@ async def cmd_boost(message: types.Message):
         'booster_until': booster_until
     })
     
-    await message.answer(
-        "🚀 **Бустер активирован!**\n"
-        "x2 награды в течение 1 часа!",
-        parse_mode="Markdown"
-    )
+    await message.answer("🚀 **Бустер x2 активирован на 1 час!**")
 
 # ---------- Админ-рассылка ----------
 @dp.message(Command("рассылка07"))
@@ -241,10 +227,22 @@ async def cmd_broadcast(message: types.Message):
     
     await message.answer(f"✅ Отправлено: {sent}\n❌ Ошибок: {failed}")
 
-# ---------- Запуск ----------
-async def main():
-    print("✅ Майнинг-бот $LBM запущен...")
-    await dp.start_polling(bot)
+# ========== WEBHOOK ==========
+async def on_startup():
+    await bot.set_webhook(WEBHOOK_URL)
+    print(f"✅ Webhook установлен на {WEBHOOK_URL}")
+    print(f"⛏️ Майнинг-бот $LBM запущен!")
+
+async def on_shutdown():
+    await bot.delete_webhook()
+    print("❌ Webhook удалён")
+
+# ========== Запуск сервера ==========
+app = web.Application()
+app.router.add_post(WEBHOOK_PATH, SimpleRequestHandler(dispatcher=dp, bot=bot))
+app.router.add_get("/health", lambda r: web.Response(text="OK"))
+app.router.add_get("/", lambda r: web.Response(text="Бот работает!"))
+setup_application(app, dp, bot=bot)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    web.run_app(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
