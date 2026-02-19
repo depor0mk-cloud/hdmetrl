@@ -1,19 +1,16 @@
 from flask import Flask
 from threading import Thread
-import logging
 
 app = Flask('')
-log = logging.getLogger('werkzeug')
-log.setLevel(logging.ERROR)  # Отключаем лишние логи
 
 @app.route('/')
 @app.route('/health')
 def home():
-    return "✅ Бот работает!"
+    return "✅ Бот работает! Майнинг $LBM активен."
 
 def run():
-    app.run(host='0.0.0.0', port=8080, debug=False, use_reloader=False)
+    app.run(host='0.0.0.0', port=8080)
 
 def keep_alive():
-    t = Thread(target=run, daemon=True)
+    t = Thread(target=run)
     t.start()
